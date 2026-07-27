@@ -1,16 +1,35 @@
+#!/usr/bin/env python
+"""
+Resume Extraction Agent (Agent‑1)
+
+Extracts structured data from a resume PDF and outputs a JSON object
+ready for consumption by downstream agents.
+"""
+
 import os
 import re
 import json
-import pdfplumber
+import sys
 from typing import Dict, List, Any, Optional, Tuple
-from openai import OpenAI
+
+import pdfplumber
 from dotenv import load_dotenv
+from openai import OpenAI
+from openai import APIStatusError, APIConnectionError, RateLimitError, AuthenticationError
 
-# Load environment variables
+# ----------------------------------------------------------------------
+# Setup
+# ----------------------------------------------------------------------
 load_dotenv()
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+api_key = os.getenv("OPENAI_API_KEY")
+if not api_key:
+    sys.exit("Error: OPENAI_API_KEY environment variable not set. "
+             "Create a .env file or export the variable before running.")
+client = OpenAI(api_key=api_key)
 
-# Constants for section headings and their mapping to section types
+# ----------------------------------------------------------------------
+# Constants – known resume headings and their canonical types
+# ----------------------------------------------------------------------
 KNOWN_HEADINGS = [
     "personal information", "contact information", "contact",
     "summary", "professional summary", "profile",
@@ -28,7 +47,6 @@ KNOWN_HEADINGS = [
     "interests", "hobbies"
 ]
 
-# Mapping from heading variations to section types
 HEADING_TO_TYPE = {
     "personal information": "personal_information",
     "contact information": "personal_information",
@@ -47,69 +65,84 @@ HEADING_TO_TYPE = {
     "certifications": "certifications",
     "achievements": "achievements",
     "awards": "achievements",
-    "internships": "experience",  # Treat internships as experience
+    "internships": "experience",          # treat internships as experience
     "publications": "publications",
-    # Leadership, extracurricular, etc. will go to other_sections
+    # Leadership, extracurricular, etc. → other_sections
 }
 
+# ----------------------------------------------------------------------
+# Helper functions
+# ----------------------------------------------------------------------
 def extract_text_from_pdf(pdf_path: str) -> str:
-    """Extract text from a PDF file."""
+    """Return plain‑text from all pages of the PDF."""
     text = ""
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
-            text += page.extract_text() + "\n"
+            page_text = page.extract_text()
+            if page_text:
+                text += page_text + "\n"
     return text
 
+
 def preprocess_text(text: str) -> str:
-    """Clean and normalize text while preserving line breaks."""
-    # Replace multiple spaces/tabs with a single space
+    """Normalize whitespace while preserving paragraph breaks."""
+    # Collapse horizontal whitespace
     text = re.sub(r'[ \t]+', ' ', text)
-    # Replace multiple newlines with at most two newlines (to keep paragraph breaks)
+    # Collapse multiple blank lines to at most two newlines
     text = re.sub(r'\n\s*\n', '\n\n', text)
-    # Remove leading/trailing whitespace
     return text.strip()
 
-def split_into_sections(text: str) -> List[Tuple[Optional[str], str]]:
-    """Split text into sections based on known headings."""
-    lines = text.splitlines()
-    sections = []
-    current_heading = None
-    current_content = []
 
-    # Pattern to match section headings (case insensitive, optional colon)
-    pattern = re.compile(r'^\s*(' + '|'.join(re.escape(h) for h in KNOWN_HEADINGS) + r')\s*:?\s*$', re.IGNORECASE)
+def split_into_sections(text: str) -> List[Tuple[Optional[str], str]]:
+    """
+    Split the resume text into sections.
+    Returns a list of (heading_or_None, section_content).
+    The first block (before any known heading) is treated as personal information.
+    """
+    lines = text.splitlines()
+    sections: List[Tuple[Optional[str], str]] = []
+    current_heading: Optional[str] = None
+    current_content: List[str] = []
+
+    # Pattern matches a known heading (case‑insensitive, optional trailing colon)
+    heading_pat = re.compile(
+        r'^\s*(' + '|'.join(map(re.escape, KNOWN_HEADINGS)) + r')\s*:?\s*$',
+        re.IGNORECASE
+    )
 
     for line in lines:
-        # Check if line matches a section heading
-        match = pattern.match(line)
-        if match:
-            # Save previous section
+        if heading_pat.match(line):
+            # Flush previous section
             if current_heading is not None or current_content:
-                sections.append((current_heading, '\n'.join(current_content)))
-            current_heading = match.group(1).strip()
+                sections.append((current_heading, "\n".join(current_content)))
+            current_heading = heading_pat.match(line).group(1).strip()
             current_content = []
         else:
             current_content.append(line)
 
-    # Add last section
+    # Append the final section
     if current_heading is not None or current_content:
-        sections.append((current_heading, '\n'.join(current_content)))
+        sections.append((current_heading, "\n".join(current_content)))
 
     return sections
 
+
 def map_heading_to_type(heading: Optional[str]) -> Optional[str]:
-    """Map a section heading to a standard section type."""
+    """Map a raw heading to the canonical section type."""
     if heading is None:
         return None
-    heading_lower = heading.lower().strip()
-    # Remove trailing colon if present
-    if heading_lower.endswith(':'):
-        heading_lower = heading_lower[:-1]
-    return HEADING_TO_TYPE.get(heading_lower)
+    h = heading.lower().strip()
+    if h.endswith(':'):
+        h = h[:-1]
+    return HEADING_TO_TYPE.get(h)
+
 
 def extract_section_data_with_openai(section_type: str, section_text: str) -> Dict[str, Any]:
-    """Extract structured data from a section using OpenAI."""
-    # Define prompts for each section type
+    """
+    Ask GPT‑3.5‑turbo to extract structured fields for a given section.
+    Returns a dict matching the expected structure for that section.
+    On any API error, returns an empty structure (so the pipeline can continue).
+    """
     prompts = {
         "personal_information": f"""
         Extract the following personal information from the given text:
@@ -127,14 +160,13 @@ def extract_section_data_with_openai(section_type: str, section_text: str) -> Di
         {section_text}
         \"\"\"
 
-        Return the information in JSON format with these exact keys:
+        Return JSON with exactly these keys (null if missing):
         name, email, phone, linkedin, github, portfolio, website, location.
-        If a piece of information is not present, set its value to null.
         """,
 
         "summary": f"""
         Extract the professional summary or profile section from the given text.
-        Return the summary as a string. If no summary is found, return null.
+        Return the summary as a string, or null if none exists.
 
         Text:
         \"\"\"
@@ -143,37 +175,30 @@ def extract_section_data_with_openai(section_type: str, section_text: str) -> Di
         """,
 
         "skills": f"""
-        Extract and categorize skills from the given text into these categories:
-        - Programming Languages
-        - Frameworks
-        - Databases
-        - Cloud
-        - Tools
-        - Libraries
-        - Testing
-        - AI/ML
-        - DevOps
-        - Others
+        Extract and categorize skills into these buckets:
+        Programming Languages, Frameworks, Databases, Cloud, Tools,
+        Libraries, Testing, AI/ML, DevOps, Others.
 
         Text:
         \"\"\"
         {section_text}
         \"\"\"
 
-        Return a JSON object with these keys (arrays of strings):
-        programming_languages, frameworks, databases, cloud, tools, libraries, testing, ai_ml, devops, others.
-        If a category has no skills, set its value to an empty array.
+        Return JSON with keys (arrays of strings):
+        programming_languages, frameworks, databases, cloud, tools,
+        libraries, testing, ai_ml, devops, others.
+        Empty array if a category has no entries.
         """,
 
         "experience": f"""
-        Extract all work experiences from the given text. For each experience, extract:
+        Extract all work experiences. For each experience return:
         - Company
         - Role
-        - Employment Type (e.g., Full-time, Part-time, Contract, Internship)
+        - Employment Type (Full‑time, Part‑time, Contract, Internship, …)
         - Location
-        - Start Date (format: YYYY-MM or MM/YYYY)
-        - End Date (format: YYYY-MM or MM/YYYY, or "Present")
-        - Duration (if available, e.g., "2 years 3 months")
+        - Start Date (YYYY‑MM or MM/YYYY)
+        - End Date (YYYY‑MM, MM/YYYY, or "Present")
+        - Duration (if present, e.g. "2 years 3 months")
         - Bullet points (array of strings)
         - Technologies Used (array of strings)
         - Achievements (array of strings)
@@ -183,12 +208,12 @@ def extract_section_data_with_openai(section_type: str, section_text: str) -> Di
         {section_text}
         \"\"\"
 
-        Return a JSON object with a key "experience" containing an array of experience objects.
-        If no experiences are found, return {{"experience": []}}.
+        Return JSON: {{ "experience": [ {{ ... }}, ... ] }}
+        Return {{"experience": []}} if none found.
         """,
 
         "projects": f"""
-        Extract all projects from the given text. For each project, extract:
+        Extract all projects. For each project return:
         - Title
         - Description
         - Technologies (array of strings)
@@ -202,12 +227,12 @@ def extract_section_data_with_openai(section_type: str, section_text: str) -> Di
         {section_text}
         \"\"\"
 
-        Return a JSON object with a key "projects" containing an array of project objects.
-        If no projects are found, return {{"projects": []}}.
+        Return JSON: {{ "projects": [ {{ ... }}, ... ] }}
+        Return {{"projects": []}} if none found.
         """,
 
         "education": f"""
-        Extract all education entries from the given text. For each entry, extract:
+        Extract all education entries. For each entry return:
         - Degree
         - Branch (e.g., Computer Science)
         - Institution
@@ -220,12 +245,12 @@ def extract_section_data_with_openai(section_type: str, section_text: str) -> Di
         {section_text}
         \"\"\"
 
-        Return a JSON object with a key "education" containing an array of education objects.
-        If no education entries are found, return {{"education": []}}.
+        Return JSON: {{ "education": [ {{ ... }}, ... ] }}
+        Return {{"education": []}} if none found.
         """,
 
         "certifications": f"""
-        Extract all certifications from the given text. For each certification, extract:
+        Extract all certifications. For each certification return:
         - Name
         - Issuing Organization
         - Year
@@ -236,23 +261,24 @@ def extract_section_data_with_openai(section_type: str, section_text: str) -> Di
         {section_text}
         \"\"\"
 
-        Return a JSON object with a key "certifications" containing an array of certification objects.
-        If no certifications are found, return {{"certifications": []}}.
+        Return JSON: {{ "certifications": [ {{ ... }}, ... ] }}
+        Return {{"certifications": []}} if none found.
         """,
 
         "achievements": f"""
-        Extract all achievements from the given text. Each achievement should be a string.
-        Return a JSON object with a key "achievements" containing an array of achievement strings.
-        If no achievements are found, return {{"achievements": []}}.
+        Extract all achievements (each as a plain string).
 
         Text:
         \"\"\"
         {section_text}
         \"\"\"
+
+        Return JSON: {{ "achievements": [ "…", "…", ... ] }}
+        Return {{"achievements": []}} if none found.
         """,
 
         "publications": f"""
-        Extract all publications from the given text. For each publication, extract:
+        Extract all publications. For each publication return:
         - Title
         - Publisher
         - Date
@@ -263,104 +289,78 @@ def extract_section_data_with_openai(section_type: str, section_text: str) -> Di
         {section_text}
         \"\"\"
 
-        Return a JSON object with a key "publications" containing an array of publication objects.
-        If no publications are found, return {{"publications": []}}.
+        Return JSON: {{ "publications": [ {{ ... }}, ... ] }}
+        Return {{"publications": []}} if none found.
         """
     }
 
     if section_type not in prompts:
-        # For unknown section types, we don't extract structured data
+        # Unknown section type → no structured extraction
         return {}
 
     prompt = prompts[section_type]
 
     try:
-        # Check if API key is set
-        if not os.getenv("OPENAI_API_KEY"):
-            print("Warning: OpenAI API key not set. Skipping OpenAI extraction for section:", section_type)
-            # Return empty structure based on section type
-            if section_type == "personal_information":
-                return {
-                    "name": None, "email": None, "phone": None, "linkedin": None,
-                    "github": None, "portfolio": None, "website": None, "location": None
-                }
-            elif section_type == "summary":
-                return {"summary": None}
-            elif section_type == "skills":
-                return {
-                    "programming_languages": [], "frameworks": [], "databases": [],
-                    "cloud": [], "tools": [], "libraries": [], "testing": [],
-                    "ai_ml": [], "devops": [], "others": []
-                }
-            elif section_type == "experience":
-                return {"experience": []}
-            elif section_type == "projects":
-                return {"projects": []}
-            elif section_type == "education":
-                return {"education": []}
-            elif section_type == "certifications":
-                return {"certifications": []}
-            elif section_type == "achievements":
-                return {"achievements": []}
-            elif section_type == "publications":
-                return {"publications": []}
-            else:
-                return {}
-
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "You are an expert resume parser. Extract information accurately and return only valid JSON."},
+                {"role": "system",
+                 "content": "You are an expert resume parser. Extract information accurately and return only valid JSON."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.1,
             max_tokens=2000
         )
 
-        # Extract JSON from response
-        response_text = response.choices[0].message.content.strip()
-        # Find JSON object in response
-        json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+        # Extract JSON from the model's reply
+        reply = response.choices[0].message.content.strip()
+        json_match = re.search(r'\{.*\}', reply, re.DOTALL)
         if json_match:
-            json_str = json_match.group()
-            return json.loads(json_str)
-        else:
-            # Fallback: try to parse the whole response as JSON
-            return json.loads(response_text)
-    except Exception as e:
-        print(f"Error extracting {section_type}: {e}")
-        # Return empty structure based on section type
-        if section_type == "personal_information":
-            return {
-                "name": None, "email": None, "phone": None, "linkedin": None,
-                "github": None, "portfolio": None, "website": None, "location": None
-            }
-        elif section_type == "summary":
-            return {"summary": None}
-        elif section_type == "skills":
-            return {
-                "programming_languages": [], "frameworks": [], "databases": [],
-                "cloud": [], "tools": [], "libraries": [], "testing": [],
-                "ai_ml": [], "devops": [], "others": []
-            }
-        elif section_type == "experience":
-            return {"experience": []}
-        elif section_type == "projects":
-            return {"projects": []}
-        elif section_type == "education":
-            return {"education": []}
-        elif section_type == "certifications":
-            return {"certifications": []}
-        elif section_type == "achievements":
-            return {"achievements": []}
-        elif section_type == "publications":
-            return {"publications": []}
-        else:
-            return {}
+            return json.loads(json_match.group())
+        # Fallback – try to parse the whole response as JSON
+        return json.loads(reply)
+
+    except (AuthenticationError, APIStatusError, APIConnectionError, RateLimitError) as e:
+        # Graceful degradation – return empty structure for this section
+        print(f"[WARN] OpenAI API error while processing '{section_type}': {e}")
+        return _empty_structure_for(section_type)
+    except Exception as e:  # Catch‑all for unexpected issues
+        print(f"[WARN] Unexpected error while processing '{section_type}': {e}")
+        return _empty_structure_for(section_type)
+
+
+def _empty_structure_for(section_type: str) -> Dict[str, Any]:
+    """Return a suitable empty/default structure for a given section type."""
+    if section_type == "personal_information":
+        return {
+            "name": None, "email": None, "phone": None, "linkedin": None,
+            "github": None, "portfolio": None, "website": None, "location": None
+        }
+    if section_type == "summary":
+        return {"summary": None}
+    if section_type == "skills":
+        return {
+            "programming_languages": [], "frameworks": [], "databases": [],
+            "cloud": [], "tools": [], "libraries": [], "testing": [],
+            "ai_ml": [], "devops": [], "others": []
+        }
+    if section_type == "experience":
+        return {"experience": []}
+    if section_type == "projects":
+        return {"projects": []}
+    if section_type == "education":
+        return {"education": []}
+    if section_type == "certifications":
+        return {"certifications": []}
+    if section_type == "achievements":
+        return {"achievements": []}
+    if section_type == "publications":
+        return {"publications": []}
+    return {}  # fallback for unknown types
+
 
 def build_result_json(sections: List[Tuple[Optional[str], str]]) -> Dict[str, Any]:
-    """Build the final JSON structure from sections."""
-    # Initialize result structure
+    """Assemble the final JSON from the parsed sections."""
     result = {
         "personal_information": {
             "name": None, "email": None, "phone": None, "linkedin": None,
@@ -387,21 +387,19 @@ def build_result_json(sections: List[Tuple[Optional[str], str]]) -> Dict[str, An
 
         # Determine section type
         if heading is None:
-            # No heading -> treat as personal information (headerless block at start)
-            section_type = "personal_information"
+            section_type = "personal_information"   # leading block without a heading
         else:
             section_type = map_heading_to_type(heading)
             if section_type is None:
-                # Unknown heading -> store in other_sections and skip extraction
+                # Unknown heading → store as-is under other_sections
                 if heading is not None:
                     result["other_sections"][heading] = content
                 continue  # skip extraction for this section
 
         if section_type is not None:
-            # Extract structured data for known section types
             extracted = extract_section_data_with_openai(section_type, content)
 
-            # Merge extracted data into result
+            # Merge extracted data into the result structure
             if section_type == "personal_information":
                 for key in result["personal_information"]:
                     if key in extracted and extracted[key] is not None:
@@ -434,33 +432,28 @@ def build_result_json(sections: List[Tuple[Optional[str], str]]) -> Dict[str, An
 
     return result
 
+
 def extract_resume(pdf_path: str) -> Dict[str, Any]:
-    """Main function to extract resume data and return JSON."""
-    # Extract text from PDF
+    """Main entry point: PDF → JSON."""
     raw_text = extract_text_from_pdf(pdf_path)
-    # Preprocess text
     clean_text = preprocess_text(raw_text)
-    # Split into sections
     sections = split_into_sections(clean_text)
-    # Build JSON structure
-    json_data = build_result_json(sections)
+    return build_result_json(sections)
 
-    return json_data
 
+# ----------------------------------------------------------------------
+# Command‑line interface
+# ----------------------------------------------------------------------
 if __name__ == "__main__":
-    import sys
     if len(sys.argv) != 2:
-        print("Usage: python extractor.py <path_to_resume.pdf>")
-        sys.exit(1)
+        sys.exit("Usage: python extractor.py <path_to_resume.pdf>")
 
     pdf_path = sys.argv[1]
-    if not os.path.exists(pdf_path):
-        print(f"Error: File not found: {pdf_path}")
-        sys.exit(1)
+    if not os.path.isfile(pdf_path):
+        sys.exit(f"Error: File not found: {pdf_path}")
 
     try:
         json_data = extract_resume(pdf_path)
         print(json.dumps(json_data, indent=2))
-    except Exception as e:
-        print(f"Error processing resume: {e}")
-        sys.exit(1)
+    except Exception as exc:
+        sys.exit(f"Error processing resume: {exc}")
