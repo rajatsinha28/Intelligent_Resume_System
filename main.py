@@ -1,0 +1,14 @@
+"""
+Main entry point for the Resume Optimizer MVP.
+"""
+
+import sys
+import os
+
+# Add the current directory to the path so we can import the orchestrator
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from agents.orchestrator import main
+
+if __name__ == "__main__":
+    sys.exit(main())

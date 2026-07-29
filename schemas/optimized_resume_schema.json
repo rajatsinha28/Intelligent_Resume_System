@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Optimized Resume Schema",
+  "type": "object",
+  "properties": {
+    "header": {
+      "type": "object",
+      "properties": {
+        "name": {"type": "string"},
+        "location": {"type": "string"},
+        "phone": {"type": "string"},
+        "email": {"type": "string"},
+        "linkedin": {"type": "string"},
+        "github": {"type": "string"}
+      },
+      "required": ["name", "email"]
+    },
+    "summary": {"type": "string"},
+    "education": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "institution": {"type": "string"},
+          "period": {"type": "string"},
+          "degree": {"type": "string"},
+          "location": {"type": "string"}
+        },
+        "required": ["institution", "period", "degree"]
+      }
+    },
+    "experience": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "company": {"type": "string"},
+          "period": {"type": "string"},
+          "title": {"type": "string"},
+          "location": {"type": "string"},
+          "bullets": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        },
+        "required": ["company", "period", "title"]
+      }
+    },
+    "projects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "technologies": {"type": "string"},
+          "bullets": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        },
+        "required": ["name"]
+      }
+    },
+    "technical_skills": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  },
+  "required": ["header", "summary", "education", "experience", "projects", "technical_skills"]
+}

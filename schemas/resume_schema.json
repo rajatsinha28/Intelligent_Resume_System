@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Resume Schema",
+  "type": "object",
+  "required": ["heading", "summary", "education", "experience", "projects", "technical_skills"],
+  "properties": {
+    "heading": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {"type": "string"},
+        "location": {"type": "string"},
+        "phone": {"type": "string"},
+        "email": {"type": "string"},
+        "linkedin": {"type": "string"},
+        "github": {"type": "string"}
+      }
+    },
+    "summary": {
+      "type": "string"
+    },
+    "education": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["institution", "period", "degree", "location"],
+        "properties": {
+          "institution": {"type": "string"},
+          "period": {"type": "string"},
+          "degree": {"type": "string"},
+          "location": {"type": "string"}
+        }
+      }
+    },
+    "experience": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["company", "period", "title", "location", "bullets"],
+        "properties": {
+          "company": {"type": "string"},
+          "period": {"type": "string"},
+          "title": {"type": "string"},
+          "location": {"type": "string"},
+          "bullets": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        }
+      }
+    },
+    "projects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "technologies", "bullets"],
+        "properties": {
+          "name": {"type": "string"},
+          "technologies": {"type": "string"},
+          "bullets": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        }
+      }
+    },
+    "technical_skills": {
+      "type": "object",
+      "properties": {
+        "categories": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["category", "skills"],
+            "properties": {
+              "category": {"type": "string"},
+              "skills": {"type": "string"}
+            }
+          }
+        }
+      }
+    }
+  }
+}

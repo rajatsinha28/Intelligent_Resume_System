@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Gap Analysis Schema",
+  "type": "object",
+  "properties": {
+    "missing_skills": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "missing_experience": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "missing_qualifications": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "weak_areas": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "strengths_to_highlight": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "keyword_matches": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "missing_keywords": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "match_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    }
+  }
+}

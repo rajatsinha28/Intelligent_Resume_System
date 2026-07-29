@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Job Description Schema",
+  "type": "object",
+  "required": ["title", "company", "raw_text"],
+  "properties": {
+    "title": {"type": "string"},
+    "company": {"type": "string"},
+    "location": {"type": "string"},
+    "employment_type": {"type": "string"},
+    "experience_level": {"type": "string"},
+    "remote_option": {"type": "boolean"},
+    "raw_text": {"type": "string"},
+    "key_responsibilities": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "required_qualifications": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "preferred_qualifications": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "what_we_offer": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  }
+}

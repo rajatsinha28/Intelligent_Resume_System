@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Critique Schema",
+  "type": "object",
+  "properties": {
+    "ats_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "keyword_optimization": {
+      "type": "object",
+      "properties": {
+        "score": {"type": "number", "minimum": 0, "maximum": 100},
+        "feedback": {"type": "string"},
+        "missing_keywords": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "content_quality": {
+      "type": "object",
+      "properties": {
+        "score": {"type": "number", "minimum": 0, "maximum": 100},
+        "feedback": {"type": "string"},
+        "strengths": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "weaknesses": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "formatting": {
+      "type": "object",
+      "properties": {
+        "score": {"type": "number", "minimum": 0, "maximum": 100},
+        "feedback": {"type": "string"},
+        "issues": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "truthfulness": {
+      "type": "object",
+      "properties": {
+        "score": {"type": "number", "minimum": 0, "maximum": 100},
+        "feedback": {"type": "string"},
+        "concerns": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "overall_feedback": {"type": "string"},
+    "recommendations": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  },
+  "required": ["ats_score", "keyword_optimization", "content_quality", "formatting", "truthfulness", "overall_feedback"]
+}

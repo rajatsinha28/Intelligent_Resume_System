@@ -1,0 +1,40 @@
+Senior Software Engineer - Full Stack (React/Node.js)
+
+About the Role:
+We are seeking a skilled Software Engineer with 3+ years of experience in full-stack development to join our growing engineering team. You will be responsible for designing, developing, and maintaining scalable web applications using modern technologies.
+
+Key Responsibilities:
+- Design and develop responsive web applications using React.js and Node.js
+- Build and maintain RESTful APIs and microservices
+- Collaborate with cross-functional teams including product, design, and DevOps
+- Write clean, maintainable, and well-tested code
+- Participate in code reviews and contribute to engineering best practices
+- Troubleshoot and debug production issues
+- Mentor junior developers and share knowledge
+
+Required Qualifications:
+- Bachelor's degree in Computer Science or related field
+- 3+ years of professional experience in software development
+- Proficiency in JavaScript/TypeScript and modern frontend frameworks (React.js preferred)
+- Strong backend development skills with Node.js, Express.js, or similar
+- Experience with RESTful API design and implementation
+- Familiarity with databases (MongoDB, PostgreSQL, or MySQL)
+- Experience with version control systems (Git)
+- Understanding of CI/CD pipelines and DevOps practices
+- Strong problem-solving skills and attention to detail
+- Excellent communication and teamwork abilities
+
+Preferred Qualifications:
+- Experience with cloud platforms (AWS, Azure, or GCP)
+- Knowledge of containerization technologies (Docker, Kubernetes)
+- Experience with testing frameworks (Jest, Mocha, Jasmine)
+- Familiarity with CI/CD tools (Jenkins, GitLab CI, GitHub Actions)
+- Exposure to AI/ML concepts or LLM-based applications
+- Open source contributions or personal projects showcasing skills
+
+What We Offer:
+- Competitive salary and benefits package
+- Remote-first work environment
+- Professional development opportunities
+- Collaborative and innovative team culture
+- Flexible working hours
